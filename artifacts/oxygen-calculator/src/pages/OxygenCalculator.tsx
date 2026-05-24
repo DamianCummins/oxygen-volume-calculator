@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
 
-const FULL_CAPACITY_LITERS = 490;
-const FULL_PRESSURE_BAR = 200;
-const FULL_PRESSURE_PSI = 2900;
+const FULL_CAPACITY_LITERS = 772;  // 490 L scaled to 315 Bar
+const FULL_PRESSURE_BAR = 315;
+const FULL_PRESSURE_PSI = 4568;   // 315 × 14.5
 const WARNING_MINUTES = 30;
 const WARNING_BAR = 50;
 
@@ -85,10 +85,12 @@ function PressureGauge({
 
   const clampedBar = Math.min(Math.max(pressureBar, 0), FULL_PRESSURE_BAR);
 
-  // Zone arc end angles (clockwise from startDeg)
-  const redEndDeg = barToDeg(50);   // 120° + 75° = 195°
-  const yldEndDeg = barToDeg(100);  // 120° + 150° = 270°
-  const grnEndDeg = barToDeg(200);  // 120° + 300° = 420° ≡ 60°
+  // Zone arc end angles
+  const redEndDeg   = barToDeg(50);
+  const yldEndDeg   = barToDeg(100);
+  const lgrnEndDeg  = barToDeg(200);
+  const dgrnEndDeg  = barToDeg(230);
+  const whtEndDeg   = barToDeg(315);
 
   // Needle
   const needleDeg = barToDeg(clampedBar);
@@ -98,34 +100,34 @@ function PressureGauge({
   const perpDeg = needleDeg + 90;
   const base1 = polar(cx, cy, baseHalf, perpDeg);
   const base2 = polar(cx, cy, baseHalf, perpDeg + 180);
-  // Counterbalance (short tail)
   const tailTip = polar(cx, cy, 18, needleDeg + 180);
 
   let needleColor = "#16a34a";
-  if (clampedBar <= 50) needleColor = "#dc2626";
+  if (clampedBar <= 50)       needleColor = "#dc2626";
   else if (clampedBar <= 100) needleColor = "#d97706";
+  else if (clampedBar <= 200) needleColor = "#16a34a";
+  else if (clampedBar <= 230) needleColor = "#15803d";
+  else                        needleColor = "#1e40af";
 
-  // Tick marks (every 10 bar = 15° step)
+  // Tick marks — major every 50 Bar + 315 at end; minor every 5 Bar
   const ticks: {
     x1: number; y1: number; x2: number; y2: number;
     isMajor: boolean;
     label: string | null; lx: number; ly: number;
   }[] = [];
-  const majorBars = [0, 50, 100, 150, 200];
-  const stepBar = 10;
+  const majorBars = [0, 50, 100, 150, 200, 250, 300, 315];
+  const stepBar = 5;
   for (let bar = 0; bar <= FULL_PRESSURE_BAR; bar += stepBar) {
     const deg = barToDeg(bar);
     const isMajor = majorBars.includes(bar);
     const len = isMajor ? majorTickLen : minorTickLen;
     const inner = polar(cx, cy, tickOuter - len, deg);
     const outer = polar(cx, cy, tickOuter, deg);
-    // Label
     let label: string | null = null;
     if (isMajor) {
-      label =
-        unit === "Bar"
-          ? String(bar)
-          : String(Math.round(barToPsi(bar)));
+      label = unit === "Bar"
+        ? String(bar)
+        : String(Math.round(barToPsi(bar)));
     }
     const lp = polar(cx, cy, labelR, deg);
     ticks.push({
@@ -156,15 +158,15 @@ function PressureGauge({
       <circle cx={cx} cy={cy} r={faceR} fill="white" />
 
       {/* ── Coloured zone arcs (outer ring on face) ── */}
-      {/* Background track (light grey) */}
+      {/* Background track */}
       <path
-        d={arcPath(cx, cy, arcR, GAUGE_START_DEG, grnEndDeg)}
+        d={arcPath(cx, cy, arcR, GAUGE_START_DEG, whtEndDeg)}
         fill="none"
         stroke="#e2e2e2"
         strokeWidth={arcStroke}
         strokeLinecap="butt"
       />
-      {/* Red zone: 0 → 50 bar */}
+      {/* Red: 0 → 50 Bar */}
       <path
         d={arcPath(cx, cy, arcR, GAUGE_START_DEG, redEndDeg)}
         fill="none"
@@ -172,7 +174,7 @@ function PressureGauge({
         strokeWidth={arcStroke}
         strokeLinecap="butt"
       />
-      {/* Yellow zone: 50 → 100 bar */}
+      {/* Yellow: 50 → 100 Bar */}
       <path
         d={arcPath(cx, cy, arcR, redEndDeg, yldEndDeg)}
         fill="none"
@@ -180,11 +182,27 @@ function PressureGauge({
         strokeWidth={arcStroke}
         strokeLinecap="butt"
       />
-      {/* Green zone: 100 → 200 bar */}
+      {/* Light green: 100 → 200 Bar */}
       <path
-        d={arcPath(cx, cy, arcR, yldEndDeg, grnEndDeg)}
+        d={arcPath(cx, cy, arcR, yldEndDeg, lgrnEndDeg)}
         fill="none"
-        stroke="#22c55e"
+        stroke="#4ade80"
+        strokeWidth={arcStroke}
+        strokeLinecap="butt"
+      />
+      {/* Dark green: 200 → 230 Bar */}
+      <path
+        d={arcPath(cx, cy, arcR, lgrnEndDeg, dgrnEndDeg)}
+        fill="none"
+        stroke="#15803d"
+        strokeWidth={arcStroke}
+        strokeLinecap="butt"
+      />
+      {/* White: 230 → 315 Bar (light grey so visible on white face) */}
+      <path
+        d={arcPath(cx, cy, arcR, dgrnEndDeg, whtEndDeg)}
+        fill="none"
+        stroke="#cbd5e1"
         strokeWidth={arcStroke}
         strokeLinecap="butt"
       />
@@ -362,31 +380,28 @@ export default function OxygenCalculator() {
             <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">
               Pressure Gauge
             </h2>
-            <div className="flex items-center gap-2 text-xs">
+            <div className="flex items-center gap-2 text-xs flex-wrap">
               <span className="inline-block w-3 h-3 rounded-full bg-red-500" />
               <span className="text-slate-500">Critical</span>
-              <span className="inline-block w-3 h-3 rounded-full bg-yellow-400 ml-2" />
+              <span className="inline-block w-3 h-3 rounded-full bg-yellow-400 ml-1" />
               <span className="text-slate-500">Caution</span>
-              <span className="inline-block w-3 h-3 rounded-full bg-green-500 ml-2" />
+              <span className="inline-block w-3 h-3 rounded-full bg-green-400 ml-1" />
               <span className="text-slate-500">Normal</span>
+              <span className="inline-block w-3 h-3 rounded-full bg-green-800 ml-1" />
+              <span className="text-slate-500">Good</span>
+              <span className="inline-block w-3 h-3 rounded-full bg-slate-300 border border-slate-400 ml-1" />
+              <span className="text-slate-500">Full</span>
             </div>
           </div>
           <div className="flex justify-center">
             <PressureGauge pressureBar={gaugeBar} unit={unit} />
           </div>
-          <div className="flex justify-center mt-2 gap-6 text-xs text-slate-500 flex-wrap">
-            <span>
-              0–50 {unit === "Bar" ? "Bar" : "725 PSI"}:{" "}
-              <span className="text-red-500 font-semibold">Critical</span>
-            </span>
-            <span>
-              50–100 {unit === "Bar" ? "Bar" : "1450 PSI"}:{" "}
-              <span className="text-yellow-600 font-semibold">Caution</span>
-            </span>
-            <span>
-              100–200 {unit === "Bar" ? "Bar" : "2900 PSI"}:{" "}
-              <span className="text-green-600 font-semibold">Normal</span>
-            </span>
+          <div className="flex justify-center mt-2 gap-4 text-xs text-slate-500 flex-wrap">
+            <span>0–50 {unit === "Bar" ? "Bar" : "725 PSI"}: <span className="text-red-500 font-semibold">Critical</span></span>
+            <span>50–100 {unit === "Bar" ? "Bar" : "1450 PSI"}: <span className="text-yellow-600 font-semibold">Caution</span></span>
+            <span>100–200 {unit === "Bar" ? "Bar" : "2900 PSI"}: <span className="text-green-500 font-semibold">Normal</span></span>
+            <span>200–230 {unit === "Bar" ? "Bar" : "3335 PSI"}: <span className="text-green-800 font-semibold">Good</span></span>
+            <span>230–315 {unit === "Bar" ? "Bar" : "4568 PSI"}: <span className="text-slate-500 font-semibold">Full</span></span>
           </div>
         </div>
 
@@ -454,7 +469,7 @@ export default function OxygenCalculator() {
                 </div>
               </div>
               <p className="mt-1 text-xs text-slate-500">
-                Full tank = {unit === "Bar" ? "200 Bar" : "2900 PSI"} /{" "}
+                Full tank = {unit === "Bar" ? "315 Bar" : "4568 PSI"} /{" "}
                 {FULL_CAPACITY_LITERS} L capacity
               </p>
             </div>
