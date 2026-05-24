@@ -1,10 +1,12 @@
 import { useState, useMemo } from "react";
 
-const FULL_CAPACITY_LITERS = 772;  // 490 L scaled to 315 Bar
-const FULL_PRESSURE_BAR = 315;
-const FULL_PRESSURE_PSI = 4568;   // 315 × 14.5
-const WARNING_MINUTES = 30;
-const WARNING_BAR = 50;
+// Air Liquide AD tank: 490 L nominal fill volume @ 230 Bar, 15°C
+const NOMINAL_FILL_LITERS = 490;   // litres of gas at nominal fill pressure
+const NOMINAL_FILL_BAR   = 230;    // bar at which the tank holds 490 L
+const GAUGE_MAX_BAR      = 315;    // gauge scale maximum (not the fill pressure)
+const GAUGE_MAX_PSI      = 4568;   // 315 × 14.5
+const WARNING_MINUTES    = 30;
+const WARNING_BAR        = 50;
 
 type Unit = "Bar" | "PSI";
 
@@ -37,7 +39,7 @@ const GAUGE_START_DEG = 120;
 const GAUGE_SWEEP_DEG = 300;
 
 function barToDeg(bar: number): number {
-  return GAUGE_START_DEG + (bar / FULL_PRESSURE_BAR) * GAUGE_SWEEP_DEG;
+  return GAUGE_START_DEG + (bar / GAUGE_MAX_BAR) * GAUGE_SWEEP_DEG;
 }
 
 function polar(cx: number, cy: number, r: number, angleDeg: number) {
@@ -83,7 +85,7 @@ function PressureGauge({
   const minorTickLen = 7;
   const labelR = 80;  // number labels
 
-  const clampedBar = Math.min(Math.max(pressureBar, 0), FULL_PRESSURE_BAR);
+  const clampedBar = Math.min(Math.max(pressureBar, 0), GAUGE_MAX_BAR);
 
   // Zone arc end angles
   const redEndDeg   = barToDeg(50);
@@ -117,7 +119,7 @@ function PressureGauge({
   }[] = [];
   const majorBars = [0, 50, 100, 150, 200, 250, 300, 315];
   const stepBar = 5;
-  for (let bar = 0; bar <= FULL_PRESSURE_BAR; bar += stepBar) {
+  for (let bar = 0; bar <= GAUGE_MAX_BAR; bar += stepBar) {
     const deg = barToDeg(bar);
     const isMajor = majorBars.includes(bar);
     const len = isMajor ? majorTickLen : minorTickLen;
@@ -313,8 +315,9 @@ export default function OxygenCalculator() {
     if (isNaN(rawFlow) || rawFlow <= 0) return null;
 
     const pressureBar = unit === "PSI" ? psiToBar(rawPressure) : rawPressure;
-    const clampedBar = Math.min(pressureBar, FULL_PRESSURE_BAR);
-    const remainingLiters = (clampedBar / FULL_PRESSURE_BAR) * FULL_CAPACITY_LITERS;
+    const clampedBar = Math.min(pressureBar, GAUGE_MAX_BAR);
+    // Volume scales linearly: 490 L at 230 Bar, proportional at other pressures
+    const remainingLiters = (clampedBar / NOMINAL_FILL_BAR) * NOMINAL_FILL_LITERS;
     const remainingMinutes = remainingLiters / rawFlow;
 
     const lowPressure = clampedBar < WARNING_BAR;
@@ -347,7 +350,7 @@ export default function OxygenCalculator() {
     return bar > 0 && bar < WARNING_BAR;
   }, [pressureInput, unit, results]);
 
-  const maxPressure = unit === "Bar" ? FULL_PRESSURE_BAR : FULL_PRESSURE_PSI;
+  const maxPressure = unit === "Bar" ? GAUGE_MAX_BAR : GAUGE_MAX_PSI;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-100 flex flex-col items-center py-8 px-4">
@@ -469,8 +472,8 @@ export default function OxygenCalculator() {
                 </div>
               </div>
               <p className="mt-1 text-xs text-slate-500">
-                Full tank = {unit === "Bar" ? "315 Bar" : "4568 PSI"} /{" "}
-                {FULL_CAPACITY_LITERS} L capacity
+                Nominal fill: {unit === "Bar" ? `${NOMINAL_FILL_BAR} Bar` : `${Math.round(NOMINAL_FILL_BAR * 14.5)} PSI`} = {NOMINAL_FILL_LITERS} L
+                (gauge max: {unit === "Bar" ? `${GAUGE_MAX_BAR} Bar` : `${GAUGE_MAX_PSI} PSI`})
               </p>
             </div>
 
@@ -592,10 +595,10 @@ export default function OxygenCalculator() {
                   </p>
                   <p className="text-xs text-slate-500 mt-1">
                     {(
-                      (results.remainingLiters / FULL_CAPACITY_LITERS) *
+                      (results.remainingLiters / NOMINAL_FILL_LITERS) *
                       100
                     ).toFixed(0)}
-                    % of {FULL_CAPACITY_LITERS} L tank
+                    % of {NOMINAL_FILL_LITERS} L nominal
                   </p>
                 </div>
 
@@ -642,7 +645,7 @@ export default function OxygenCalculator() {
                   <p className="text-xs text-slate-500 font-medium">Tank Fill</p>
                   <p className="text-sm font-bold text-slate-800 mt-0.5">
                     {(
-                      (results.pressureBar / FULL_PRESSURE_BAR) *
+                      (results.pressureBar / NOMINAL_FILL_BAR) *
                       100
                     ).toFixed(0)}
                     %
