@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
 
 // Air Liquide AD tank: 490 L nominal fill volume @ 230 Bar, 15°C
 const NOMINAL_FILL_LITERS = 490;   // litres of gas at nominal fill pressure
@@ -63,6 +63,23 @@ function arcPath(
   return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArc} 1 ${end.x} ${end.y}`;
 }
 
+/**
+ * Convert a raw SVG-coordinate angle (0° = right, CW positive) to a Bar value.
+ * Returns null when the angle falls inside the dead zone at the bottom.
+ */
+function angleDegToBar(angle360: number): number | null {
+  // How far clockwise from the gauge start (120°)?
+  const rel = ((angle360 - GAUGE_START_DEG) % 360 + 360) % 360;
+  // Dead zone is 60° wide (420°→360°+60° → 60°→120°, the bottom gap)
+  if (rel > GAUGE_SWEEP_DEG) {
+    // Snap to nearest endpoint so dragging through the bottom feels natural
+    const distToEnd   = rel - GAUGE_SWEEP_DEG;   // past max
+    const distToStart = 360  - rel;               // back to 0
+    return distToEnd <= distToStart ? GAUGE_MAX_BAR : 0;
+  }
+  return Math.round((rel / GAUGE_SWEEP_DEG) * GAUGE_MAX_BAR);
+}
+
 // ──────────────────────────────────────────────────
 // Gauge component
 // ──────────────────────────────────────────────────
@@ -70,10 +87,49 @@ function arcPath(
 function PressureGauge({
   pressureBar,
   unit,
+  onPressureChange,
 }: {
   pressureBar: number;
   unit: Unit;
+  onPressureChange?: (bar: number) => void;
 }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const getBarFromPointer = useCallback((clientX: number, clientY: number): number | null => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const rect = svg.getBoundingClientRect();
+    // Map client coords → SVG viewBox coords (300 × 300)
+    const svgX = (clientX - rect.left)  * (300 / rect.width);
+    const svgY = (clientY - rect.top)   * (300 / rect.height);
+    const dx = svgX - 150;
+    const dy = svgY - 150;
+    // Only respond if the pointer is reasonably close to the dial face
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 20) return null; // too close to centre
+    const rawDeg = Math.atan2(dy, dx) * (180 / Math.PI);
+    const angle360 = ((rawDeg % 360) + 360) % 360;
+    return angleDegToBar(angle360);
+  }, []);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    if (!onPressureChange) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setIsDragging(true);
+    const bar = getBarFromPointer(e.clientX, e.clientY);
+    if (bar !== null) onPressureChange(bar);
+  }, [onPressureChange, getBarFromPointer]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    if (!isDragging || !onPressureChange) return;
+    const bar = getBarFromPointer(e.clientX, e.clientY);
+    if (bar !== null) onPressureChange(bar);
+  }, [isDragging, onPressureChange, getBarFromPointer]);
+
+  const handlePointerUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
   const cx = 150;
   const cy = 150;
   const outerR = 138; // bezel outer edge
@@ -148,9 +204,15 @@ function PressureGauge({
 
   return (
     <svg
+      ref={svgRef}
       viewBox="0 0 300 300"
       className="w-full max-w-[320px] drop-shadow-md"
-      aria-label="Oxygen tank pressure gauge"
+      aria-label="Oxygen tank pressure gauge. Drag to set pressure."
+      style={{ cursor: isDragging ? "grabbing" : onPressureChange ? "grab" : "default", touchAction: "none" }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
     >
       {/* Bezel */}
       <circle cx={cx} cy={cy} r={outerR} fill="#c8c8c8" />
@@ -282,19 +344,23 @@ function PressureGauge({
         O₂ OXYGEN
       </text>
 
+      {/* ── Drag hint: pulsing ring while dragging ── */}
+      {isDragging && (
+        <circle cx={cx} cy={cy} r={22} fill="none" stroke="#3b82f6" strokeWidth={2.5} opacity={0.5} />
+      )}
+
       {/* ── Needle ── */}
-      <g style={{ transition: "transform 0.35s ease", transformOrigin: `${cx}px ${cy}px` }}>
-        <polygon
-          points={`${needleTip.x},${needleTip.y} ${base1.x},${base1.y} ${tailTip.x},${tailTip.y} ${base2.x},${base2.y}`}
-          fill="#1e293b"
-          stroke="none"
-        />
-      </g>
+      <polygon
+        points={`${needleTip.x},${needleTip.y} ${base1.x},${base1.y} ${tailTip.x},${tailTip.y} ${base2.x},${base2.y}`}
+        fill={isDragging ? "#1d4ed8" : "#1e293b"}
+        stroke="none"
+        style={{ transition: "fill 0.15s ease" }}
+      />
 
       {/* Centre hub */}
-      <circle cx={cx} cy={cy} r={9} fill="#374151" />
+      <circle cx={cx} cy={cy} r={9} fill={isDragging ? "#1d4ed8" : "#374151"} style={{ transition: "fill 0.15s ease" }} />
       <circle cx={cx} cy={cy} r={5} fill="#94a3b8" />
-      <circle cx={cx} cy={cy} r={2} fill="#374151" />
+      <circle cx={cx} cy={cy} r={2} fill={isDragging ? "#bfdbfe" : "#374151"} style={{ transition: "fill 0.15s ease" }} />
     </svg>
   );
 }
@@ -397,7 +463,16 @@ export default function OxygenCalculator() {
             </div>
           </div>
           <div className="flex justify-center">
-            <PressureGauge pressureBar={gaugeBar} unit={unit} />
+            <PressureGauge
+                pressureBar={gaugeBar}
+                unit={unit}
+                onPressureChange={(bar) => {
+                  const val = unit === "PSI"
+                    ? String(Math.round(barToPsi(bar)))
+                    : String(bar);
+                  setPressureInput(val);
+                }}
+              />
           </div>
           <div className="flex justify-center mt-2 gap-4 text-xs text-slate-500 flex-wrap">
             <span>0–50 {unit === "Bar" ? "Bar" : "725 PSI"}: <span className="text-red-500 font-semibold">Critical</span></span>
