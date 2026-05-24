@@ -81,55 +81,96 @@ function angleDegToBar(angle360: number): number | null {
 }
 
 // ──────────────────────────────────────────────────
+// Flow rate dial helpers
+// ──────────────────────────────────────────────────
+
+const FLOW_STOPS = [0, 0.5, 1, 2, 3, 4, 5, 6];
+const FLOW_MAX   = 6;
+
+function flowToDeg(flow: number): number {
+  return GAUGE_START_DEG + (flow / FLOW_MAX) * GAUGE_SWEEP_DEG;
+}
+
+function snapToFlowStop(raw: number): number {
+  return FLOW_STOPS.reduce((best, s) =>
+    Math.abs(s - raw) < Math.abs(best - raw) ? s : best
+  );
+}
+
+function angleToFlow(angle360: number): number {
+  const rel = ((angle360 - GAUGE_START_DEG) % 360 + 360) % 360;
+  if (rel > GAUGE_SWEEP_DEG) {
+    return rel - GAUGE_SWEEP_DEG <= 360 - rel ? FLOW_MAX : 0;
+  }
+  return snapToFlowStop((rel / GAUGE_SWEEP_DEG) * FLOW_MAX);
+}
+
+// ──────────────────────────────────────────────────
 // Gauge component
 // ──────────────────────────────────────────────────
+
+type DragTarget = "pressure" | "flow" | null;
 
 function PressureGauge({
   pressureBar,
   unit,
+  flowRate,
   onPressureChange,
+  onFlowRateChange,
 }: {
   pressureBar: number;
   unit: Unit;
+  flowRate: number;
   onPressureChange?: (bar: number) => void;
+  onFlowRateChange?: (lpm: number) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
+  const [dragTarget, setDragTarget] = useState<DragTarget>(null);
 
-  const getBarFromPointer = useCallback((clientX: number, clientY: number): number | null => {
+  // viewBox is "-25 -25 350 350" — convert client → SVG space
+  const getSvgPolar = useCallback((clientX: number, clientY: number) => {
     const svg = svgRef.current;
     if (!svg) return null;
     const rect = svg.getBoundingClientRect();
-    // Map client coords → SVG viewBox coords (300 × 300)
-    const svgX = (clientX - rect.left)  * (300 / rect.width);
-    const svgY = (clientY - rect.top)   * (300 / rect.height);
+    const svgX = (clientX - rect.left) * (350 / rect.width) - 25;
+    const svgY = (clientY - rect.top)  * (350 / rect.height) - 25;
     const dx = svgX - 150;
     const dy = svgY - 150;
-    // Only respond if the pointer is reasonably close to the dial face
     const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < 20) return null; // too close to centre
-    const rawDeg = Math.atan2(dy, dx) * (180 / Math.PI);
-    const angle360 = ((rawDeg % 360) + 360) % 360;
-    return angleDegToBar(angle360);
+    const angle360 = (((Math.atan2(dy, dx) * 180) / Math.PI) % 360 + 360) % 360;
+    return { dist, angle360 };
   }, []);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
-    if (!onPressureChange) return;
+    const p = getSvgPolar(e.clientX, e.clientY);
+    if (!p) return;
     e.currentTarget.setPointerCapture(e.pointerId);
-    setIsDragging(true);
-    const bar = getBarFromPointer(e.clientX, e.clientY);
-    if (bar !== null) onPressureChange(bar);
-  }, [onPressureChange, getBarFromPointer]);
+    if (p.dist >= 20 && p.dist <= 135 && onPressureChange) {
+      setDragTarget("pressure");
+      const bar = angleDegToBar(p.angle360);
+      if (bar !== null) onPressureChange(bar);
+    } else if (p.dist >= 140 && p.dist <= 170 && onFlowRateChange) {
+      setDragTarget("flow");
+      onFlowRateChange(angleToFlow(p.angle360));
+    }
+  }, [getSvgPolar, onPressureChange, onFlowRateChange]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
-    if (!isDragging || !onPressureChange) return;
-    const bar = getBarFromPointer(e.clientX, e.clientY);
-    if (bar !== null) onPressureChange(bar);
-  }, [isDragging, onPressureChange, getBarFromPointer]);
+    if (!dragTarget) return;
+    const p = getSvgPolar(e.clientX, e.clientY);
+    if (!p) return;
+    if (dragTarget === "pressure" && onPressureChange) {
+      const bar = angleDegToBar(p.angle360);
+      if (bar !== null) onPressureChange(bar);
+    } else if (dragTarget === "flow" && onFlowRateChange) {
+      onFlowRateChange(angleToFlow(p.angle360));
+    }
+  }, [dragTarget, getSvgPolar, onPressureChange, onFlowRateChange]);
 
-  const handlePointerUp = useCallback(() => {
-    setIsDragging(false);
-  }, []);
+  const handlePointerUp = useCallback(() => setDragTarget(null), []);
+
+  const isDraggingPressure = dragTarget === "pressure";
+  const isDraggingFlow     = dragTarget === "flow";
   const cx = 150;
   const cy = 150;
   const outerR = 138; // bezel outer edge
@@ -205,10 +246,10 @@ function PressureGauge({
   return (
     <svg
       ref={svgRef}
-      viewBox="0 0 300 300"
-      className="w-full max-w-[320px] drop-shadow-md"
-      aria-label="Oxygen tank pressure gauge. Drag to set pressure."
-      style={{ cursor: isDragging ? "grabbing" : onPressureChange ? "grab" : "default", touchAction: "none" }}
+      viewBox="-25 -25 350 350"
+      className="w-full max-w-[360px] drop-shadow-md"
+      aria-label="Inner dial: drag to set pressure. Outer ring: drag to set flow rate."
+      style={{ cursor: dragTarget ? "grabbing" : (onPressureChange || onFlowRateChange) ? "grab" : "default", touchAction: "none" }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -344,23 +385,108 @@ function PressureGauge({
         O₂ OXYGEN
       </text>
 
-      {/* ── Drag hint: pulsing ring while dragging ── */}
-      {isDragging && (
+      {/* ── Drag hint when adjusting pressure ── */}
+      {isDraggingPressure && (
         <circle cx={cx} cy={cy} r={22} fill="none" stroke="#3b82f6" strokeWidth={2.5} opacity={0.5} />
       )}
 
       {/* ── Needle ── */}
       <polygon
         points={`${needleTip.x},${needleTip.y} ${base1.x},${base1.y} ${tailTip.x},${tailTip.y} ${base2.x},${base2.y}`}
-        fill={isDragging ? "#1d4ed8" : "#1e293b"}
+        fill={isDraggingPressure ? "#1d4ed8" : "#1e293b"}
         stroke="none"
         style={{ transition: "fill 0.15s ease" }}
       />
 
       {/* Centre hub */}
-      <circle cx={cx} cy={cy} r={9} fill={isDragging ? "#1d4ed8" : "#374151"} style={{ transition: "fill 0.15s ease" }} />
+      <circle cx={cx} cy={cy} r={9} fill={isDraggingPressure ? "#1d4ed8" : "#374151"} style={{ transition: "fill 0.15s ease" }} />
       <circle cx={cx} cy={cy} r={5} fill="#94a3b8" />
-      <circle cx={cx} cy={cy} r={2} fill={isDragging ? "#bfdbfe" : "#374151"} style={{ transition: "fill 0.15s ease" }} />
+      <circle cx={cx} cy={cy} r={2} fill={isDraggingPressure ? "#bfdbfe" : "#374151"} style={{ transition: "fill 0.15s ease" }} />
+
+      {/* ═══════════════════════════════════════════════
+          OUTER FLOW RATE DIAL
+          Ring centred at (150,150), r=152, stroke=20
+          Sits beyond the bezel (outerR=138)
+      ══════════════════════════════════════════════ */}
+      {(() => {
+        const fr = 152;           // flow ring centre radius
+        const fs = 20;            // flow ring stroke width
+        const tickInner = fr - fs / 2 - 1;
+        const tickOuter2 = fr + fs / 2 + 1;
+        const labelR2 = fr + fs / 2 + 13;
+        const fullEndDeg = flowToDeg(FLOW_MAX);
+
+        return (
+          <>
+            {/* Dark background track */}
+            <path
+              d={arcPath(cx, cy, fr, GAUGE_START_DEG, fullEndDeg)}
+              fill="none"
+              stroke="#1e293b"
+              strokeWidth={fs}
+              strokeLinecap="butt"
+            />
+
+            {/* Active (0 → current flow) highlight */}
+            {flowRate > 0 && (
+              <path
+                d={arcPath(cx, cy, fr, GAUGE_START_DEG, flowToDeg(flowRate))}
+                fill="none"
+                stroke={isDraggingFlow ? "#38bdf8" : "#0ea5e9"}
+                strokeWidth={fs}
+                strokeLinecap="butt"
+                style={{ transition: "stroke 0.15s ease" }}
+              />
+            )}
+
+            {/* Tick marks + labels at each stop */}
+            {FLOW_STOPS.map((stop) => {
+              const deg = flowToDeg(stop);
+              const inner = polar(cx, cy, tickInner, deg);
+              const outer2 = polar(cx, cy, tickOuter2, deg);
+              const lp = polar(cx, cy, labelR2, deg);
+              const isActive = stop === flowRate;
+              return (
+                <g key={stop}>
+                  <line
+                    x1={inner.x} y1={inner.y}
+                    x2={outer2.x} y2={outer2.y}
+                    stroke={isActive ? (isDraggingFlow ? "#38bdf8" : "#0ea5e9") : "#94a3b8"}
+                    strokeWidth={isActive ? 2.5 : 1.5}
+                    strokeLinecap="round"
+                  />
+                  <text
+                    x={lp.x} y={lp.y}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize={isActive ? "11" : "9"}
+                    fontWeight={isActive ? "800" : "500"}
+                    fill={isActive ? (isDraggingFlow ? "#38bdf8" : "#0ea5e9") : "#94a3b8"}
+                    fontFamily="system-ui, sans-serif"
+                    style={{ transition: "fill 0.15s ease, font-size 0.15s ease" }}
+                  >
+                    {stop === 0.5 ? "½" : String(stop)}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* "L/min" label — sits between the 0 and 6 endpoints at the bottom */}
+            <text
+              x={cx} y={cy + fr + 4}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fontSize="7"
+              fontWeight="600"
+              fill="#64748b"
+              fontFamily="system-ui, sans-serif"
+              letterSpacing="0.12em"
+            >
+              L/MIN
+            </text>
+          </>
+        );
+      })()}
     </svg>
   );
 }
@@ -466,11 +592,15 @@ export default function OxygenCalculator() {
             <PressureGauge
                 pressureBar={gaugeBar}
                 unit={unit}
+                flowRate={parseFloat(flowRateInput) || 0}
                 onPressureChange={(bar) => {
                   const val = unit === "PSI"
                     ? String(Math.round(barToPsi(bar)))
                     : String(bar);
                   setPressureInput(val);
+                }}
+                onFlowRateChange={(lpm) => {
+                  setFlowRateInput(lpm === 0 ? "" : String(lpm));
                 }}
               />
           </div>
