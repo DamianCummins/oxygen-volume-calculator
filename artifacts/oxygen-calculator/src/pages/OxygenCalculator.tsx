@@ -499,7 +499,6 @@ export default function OxygenCalculator() {
   const [pressureInput, setPressureInput] = useState<string>("");
   const [flowRateInput, setFlowRateInput] = useState<string>("");
   const [unit, setUnit] = useState<Unit>("Bar");
-  const [showInputs, setShowInputs] = useState(false);
 
   const results = useMemo(() => {
     const rawPressure = parseFloat(pressureInput);
@@ -572,23 +571,6 @@ export default function OxygenCalculator() {
 
         {/* Gauge card */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">
-              Pressure Gauge
-            </h2>
-            <div className="flex items-center gap-2 text-xs flex-wrap">
-              <span className="inline-block w-3 h-3 rounded-full bg-red-500" />
-              <span className="text-slate-500">Critical</span>
-              <span className="inline-block w-3 h-3 rounded-full bg-yellow-400 ml-1" />
-              <span className="text-slate-500">Caution</span>
-              <span className="inline-block w-3 h-3 rounded-full bg-green-400 ml-1" />
-              <span className="text-slate-500">Normal</span>
-              <span className="inline-block w-3 h-3 rounded-full bg-green-800 ml-1" />
-              <span className="text-slate-500">Good</span>
-              <span className="inline-block w-3 h-3 rounded-full bg-slate-300 border border-slate-400 ml-1" />
-              <span className="text-slate-500">Full</span>
-            </div>
-          </div>
           <div className="flex justify-center">
             <PressureGauge
                 pressureBar={gaugeBar}
@@ -605,117 +587,6 @@ export default function OxygenCalculator() {
                 }}
               />
           </div>
-        </div>
-
-        {/* Inputs card */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-          <button
-            onClick={() => setShowInputs((v) => !v)}
-            className="flex w-full items-center justify-between text-sm font-semibold text-slate-700 uppercase tracking-wider focus:outline-none"
-            aria-expanded={showInputs}
-          >
-            <span>Tank Parameters</span>
-            <svg
-              viewBox="0 0 24 24"
-              className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${showInputs ? "rotate-180" : ""}`}
-              fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-            >
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </button>
-          {showInputs && <div className="space-y-4 mt-4">
-            {/* Pressure + unit toggle */}
-            <div>
-              <label
-                className="block text-sm font-medium text-slate-700 mb-1.5"
-                htmlFor="pressure-input"
-              >
-                Current Tank Pressure
-              </label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <input
-                    id="pressure-input"
-                    type="number"
-                    min="0"
-                    max={maxPressure}
-                    step="any"
-                    placeholder={unit === "Bar" ? "e.g. 150" : "e.g. 2175"}
-                    value={pressureInput}
-                    onChange={(e) => setPressureInput(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    aria-label={`Current pressure in ${unit}`}
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 pointer-events-none">
-                    {unit}
-                  </span>
-                </div>
-                <div className="flex rounded-lg border border-slate-300 overflow-hidden bg-slate-50 text-sm font-medium">
-                  {(["Bar", "PSI"] as Unit[]).map((u) => (
-                    <button
-                      key={u}
-                      onClick={() => {
-                        if (u !== unit) {
-                          const val = parseFloat(pressureInput);
-                          if (!isNaN(val)) {
-                            if (u === "PSI") {
-                              setPressureInput(String(Math.round(barToPsi(val))));
-                            } else {
-                              setPressureInput(
-                                String(Math.round(psiToBar(val) * 10) / 10)
-                              );
-                            }
-                          }
-                          setUnit(u);
-                        }
-                      }}
-                      className={`px-4 py-2.5 transition-all focus:outline-none ${
-                        unit === u
-                          ? "bg-blue-600 text-white shadow-sm"
-                          : "text-slate-600 hover:bg-slate-100"
-                      }`}
-                      aria-pressed={unit === u}
-                    >
-                      {u}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <p className="mt-1 text-xs text-slate-500">
-                Nominal fill: {unit === "Bar" ? `${NOMINAL_FILL_BAR} Bar` : `${Math.round(NOMINAL_FILL_BAR * 14.5)} PSI`} = {NOMINAL_FILL_LITERS} L
-                (gauge max: {unit === "Bar" ? `${GAUGE_MAX_BAR} Bar` : `${GAUGE_MAX_PSI} PSI`})
-              </p>
-            </div>
-
-            {/* Flow rate */}
-            <div>
-              <label
-                className="block text-sm font-medium text-slate-700 mb-1.5"
-                htmlFor="flow-rate-input"
-              >
-                Flow Rate
-              </label>
-              <div className="relative">
-                <input
-                  id="flow-rate-input"
-                  type="number"
-                  min="0.1"
-                  step="0.5"
-                  placeholder="e.g. 2"
-                  value={flowRateInput}
-                  onChange={(e) => setFlowRateInput(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                  aria-label="Flow rate in litres per minute"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 pointer-events-none">
-                  L/min
-                </span>
-              </div>
-              <p className="mt-1 text-xs text-slate-500">
-                Typical adult: 1–6 L/min. High-flow: 10–15 L/min.
-              </p>
-            </div>
-          </div>}
         </div>
 
         {/* Results card */}
