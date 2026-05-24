@@ -19,8 +19,7 @@ function barToPsi(bar: number): number {
 function formatTimeString(totalMinutes: number): string {
   const h = Math.floor(totalMinutes / 60);
   const m = Math.floor(totalMinutes % 60);
-  if (h === 0) return `${m} minutes`;
-  if (m === 0) return `${h} hour${h !== 1 ? "s" : ""}`;
+  if (h === 0) return `${m} minute${m !== 1 ? "s" : ""}`;
   return `${h} hour${h !== 1 ? "s" : ""} ${m} minute${m !== 1 ? "s" : ""}`;
 }
 
@@ -321,6 +320,15 @@ export default function OxygenCalculator() {
     return unit === "PSI" ? psiToBar(raw) : raw;
   }, [pressureInput, unit]);
 
+  /** Show low-pressure warning even if flow rate is not yet entered */
+  const pressureOnlyWarning = useMemo(() => {
+    if (results) return false; // full results already handles warning
+    const raw = parseFloat(pressureInput);
+    if (isNaN(raw) || raw < 0) return false;
+    const bar = unit === "PSI" ? psiToBar(raw) : raw;
+    return bar > 0 && bar < WARNING_BAR;
+  }, [pressureInput, unit, results]);
+
   const maxPressure = unit === "Bar" ? FULL_PRESSURE_BAR : FULL_PRESSURE_PSI;
 
   return (
@@ -489,12 +497,33 @@ export default function OxygenCalculator() {
           </h2>
 
           {!results ? (
-            <div className="flex flex-col items-center py-8 text-slate-400">
-              <svg viewBox="0 0 24 24" className="w-10 h-10 mb-3 fill-current opacity-40">
-                <path d="M12 2a10 10 0 110 20A10 10 0 0112 2zm0 2a8 8 0 100 16A8 8 0 0012 4zm-1 4h2v5h-2zm0 6h2v2h-2z" />
-              </svg>
-              <p className="text-sm font-medium">Enter pressure and flow rate to calculate</p>
-              <p className="text-xs mt-1 opacity-70">Results update as you type</p>
+            <div className="space-y-4">
+              {pressureOnlyWarning && (
+                <div
+                  className="flex items-start gap-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3"
+                  role="alert"
+                  aria-live="polite"
+                >
+                  <svg viewBox="0 0 24 24" className="w-5 h-5 fill-red-500 flex-shrink-0 mt-0.5">
+                    <path d="M12 2a10 10 0 110 20A10 10 0 0112 2zm0 2a8 8 0 100 16A8 8 0 0012 4zm-1 4h2v5h-2zm0 6h2v2h-2z" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-semibold text-red-700">
+                      Warning: Tank pressure is critically low (below 50 Bar)
+                    </p>
+                    <p className="text-xs text-red-600 mt-0.5">
+                      Arrange for tank replacement immediately.
+                    </p>
+                  </div>
+                </div>
+              )}
+              <div className="flex flex-col items-center py-6 text-slate-400">
+                <svg viewBox="0 0 24 24" className="w-10 h-10 mb-3 fill-current opacity-40">
+                  <path d="M12 2a10 10 0 110 20A10 10 0 0112 2zm0 2a8 8 0 100 16A8 8 0 0012 4zm-1 4h2v5h-2zm0 6h2v2h-2z" />
+                </svg>
+                <p className="text-sm font-medium">Enter pressure and flow rate to calculate</p>
+                <p className="text-xs mt-1 opacity-70">Results update as you type</p>
+              </div>
             </div>
           ) : (
             <div className="space-y-4">
