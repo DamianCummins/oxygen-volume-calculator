@@ -743,6 +743,32 @@ export default function OxygenCalculator() {
           )}
         </div>
 
+        {/* Maths info card */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 text-sm text-slate-600 space-y-3">
+          <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">How it works</h2>
+          <div className="space-y-2 leading-relaxed">
+            <p>
+              <span className="font-semibold text-slate-800">Remaining volume</span> scales linearly with pressure.
+              A full tank at <span className="font-medium">230 Bar</span> holds <span className="font-medium">490 L</span>,
+              so at any pressure <em>P</em>:
+            </p>
+            <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-2.5 font-mono text-xs text-slate-700">
+              Volume (L) = (P ÷ 230) × 490
+            </div>
+            <p>
+              <span className="font-semibold text-slate-800">Time remaining</span> divides that volume by the flow rate:
+            </p>
+            <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-2.5 font-mono text-xs text-slate-700">
+              Time (min) = Volume (L) ÷ Flow rate (L/min)
+            </div>
+            <p className="text-xs text-slate-500 pt-1">
+              The gauge runs to <span className="font-medium">315 Bar</span> (the WIKA scale max) but nominal fill is 230 Bar.
+              Pressures above 230 Bar are shown in the silver zone and still calculate correctly.
+              A <span className="font-medium text-red-500">red warning</span> is shown when less than 30 minutes or 50 Bar remains.
+            </p>
+          </div>
+        </div>
+
         {/* Disclaimer */}
         <p className="text-xs text-slate-400 text-center pb-4 leading-relaxed">
           For reference purposes only. Always follow clinical guidelines and
