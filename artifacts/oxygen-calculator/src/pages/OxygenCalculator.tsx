@@ -604,13 +604,6 @@ export default function OxygenCalculator() {
                 }}
               />
           </div>
-          <div className="flex justify-center mt-2 gap-4 text-xs text-slate-500 flex-wrap">
-            <span>0–50 {unit === "Bar" ? "Bar" : "725 PSI"}: <span className="text-red-500 font-semibold">Critical</span></span>
-            <span>50–100 {unit === "Bar" ? "Bar" : "1450 PSI"}: <span className="text-yellow-600 font-semibold">Caution</span></span>
-            <span>100–200 {unit === "Bar" ? "Bar" : "2900 PSI"}: <span className="text-green-500 font-semibold">Normal</span></span>
-            <span>200–230 {unit === "Bar" ? "Bar" : "3335 PSI"}: <span className="text-green-800 font-semibold">Good</span></span>
-            <span>230–315 {unit === "Bar" ? "Bar" : "4568 PSI"}: <span className="text-slate-500 font-semibold">Full</span></span>
-          </div>
         </div>
 
         {/* Inputs card */}
